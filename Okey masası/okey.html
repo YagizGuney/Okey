@@ -1,0 +1,1249 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Okey Masası - Puan Takip ve Eşleştirme Sistemi</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        okey: {
+                            50: '#f0fdf4',
+                            100: '#dcfce7',
+                            200: '#bbf7d0',
+                            300: '#86efac',
+                            400: '#4ade80',
+                            500: '#22c55e',
+                            600: '#16a34a',
+                            700: '#15803d',
+                            800: '#166534',
+                            900: '#14532d',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    
+    <!-- React & ReactDOM -->
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    
+    <!-- Babel for JSX -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;900&display=swap" rel="stylesheet">
+    
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f8fafc; color: #0f172a; }
+        .hide-scroll::-webkit-scrollbar { display: none; }
+        .hide-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+        .fade-in { animation: fadeIn 0.3s ease-in-out; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        /* Disable arrows on number inputs */
+        input[type=number]::-webkit-inner-spin-button, input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+        input[type=number] { -moz-appearance: textfield; }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect, useMemo, memo } = React;
+
+        const generateId = () => Math.random().toString(36).substr(2, 9);
+        const shuffleArray = (array) => {
+            const arr = [...array];
+            for (let i = arr.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [arr[i], arr[j]] = [arr[j], arr[i]];
+            }
+            return arr;
+        };
+
+        const GAME_TYPES = [
+            { id: 'normal', name: 'Normal Okey' },
+            { id: '101', name: '101 Okey' },
+            { id: 'katlamali', name: 'Katlamalı Okey' },
+            { id: 'katlamasiz', name: 'Katlamasız Okey' }
+        ];
+
+        const ACTIVE_GAME_TYPES = [
+            { id: 'normal', name: 'Normal Okey' },
+            { id: '101', name: '101 Okey' }
+        ];
+
+        const Card = ({ children, className = "" }) => (
+            <div className={`bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden ${className}`}>
+                {children}
+            </div>
+        );
+
+        const Button = ({ children, onClick, variant = 'primary', className = "", disabled = false, type="button", size="md", title }) => {
+            const sizes = { sm: "px-3 py-1.5 text-sm", md: "px-4 py-2.5", lg: "px-6 py-3 text-lg" };
+            const variants = {
+                primary: "bg-okey-600 hover:bg-okey-700 text-white shadow-sm",
+                secondary: "bg-slate-100 hover:bg-slate-200 text-slate-700",
+                danger: "bg-red-50 hover:bg-red-100 text-red-600 border border-red-100",
+                outline: "border-2 border-okey-600 text-okey-600 hover:bg-okey-50",
+                ghost: "hover:bg-slate-100 text-slate-600"
+            };
+            const baseStyle = "rounded-xl font-medium transition-all duration-200 active:scale-95 disabled:opacity-50 disabled:pointer-events-none flex items-center justify-center gap-2";
+            return (
+                <button type={type} onClick={onClick} disabled={disabled} title={title} className={`${baseStyle} ${variants[variant]} ${sizes[size]} ${className}`}>
+                    {children}
+                </button>
+            );
+        };
+
+        const Input = ({ value, onChange, placeholder, type = "text", className = "", onKeyDown, autoFocus }) => (
+            <input
+                type={type} value={value} onChange={onChange} placeholder={placeholder} onKeyDown={onKeyDown} autoFocus={autoFocus}
+                className={`w-full px-4 py-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-okey-500/50 focus:border-okey-500 transition-all ${className}`}
+            />
+        );
+
+        const Modal = ({ isOpen, onClose, title, children }) => {
+            if (!isOpen) return null;
+            return (
+                <div className="fixed inset-0 bg-slate-900/50 z-50 flex items-center justify-center p-4 backdrop-blur-sm fade-in">
+                    <div className="bg-white rounded-2xl shadow-xl w-full max-w-md overflow-hidden flex flex-col max-h-[90vh]">
+                        <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
+                            <h3 className="font-semibold text-lg text-slate-800">{title}</h3>
+                            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg hover:bg-slate-100 transition-colors">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12"></path></svg>
+                            </button>
+                        </div>
+                        <div className="p-5 overflow-y-auto">{children}</div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ConfirmModal = ({ isOpen, onClose, onConfirm, title, message, confirmText = "Onayla", variant="primary" }) => (
+            <Modal isOpen={isOpen} onClose={onClose} title={title}>
+                <p className="text-slate-600 mb-6">{message}</p>
+                <div className="flex gap-3 justify-end">
+                    <Button variant="ghost" onClick={onClose}>İptal</Button>
+                    <Button variant={variant} onClick={() => { onConfirm(); onClose(); }}>{confirmText}</Button>
+                </div>
+            </Modal>
+        );
+
+        const YazbozInput = memo(({ value, onChange }) => {
+            const [localVal, setLocalVal] = useState(value !== undefined ? value : '');
+            
+            useEffect(() => {
+                setLocalVal(value !== undefined ? value : '');
+            }, [value]);
+
+            const handleBlur = () => {
+                if (localVal === '-' || localVal === '') onChange('');
+                else {
+                    const parsed = parseInt(localVal, 10);
+                    if (!isNaN(parsed)) onChange(parsed);
+                    else onChange('');
+                }
+            };
+
+            const handleKeyDown = (e) => {
+                if (e.key === 'Enter') e.target.blur();
+            };
+
+            return (
+                <input 
+                    type="text" inputMode="numeric" value={localVal}
+                    onChange={e => setLocalVal(e.target.value)} onBlur={handleBlur} onKeyDown={handleKeyDown}
+                    className="w-full text-center py-4 bg-transparent outline-none focus:bg-okey-50 focus:ring-inset focus:ring-2 focus:ring-okey-400 font-bold text-slate-800 transition-all text-base md:text-lg rounded-none"
+                />
+            );
+        });
+
+        const YazbozNoteInput = memo(({ value, onChange }) => {
+            const [localVal, setLocalVal] = useState(value || '');
+            useEffect(() => { setLocalVal(value || ''); }, [value]);
+
+            return (
+                <input 
+                    type="text" value={localVal}
+                    onChange={e => setLocalVal(e.target.value)} onBlur={() => onChange(localVal)} onKeyDown={e => { if(e.key === 'Enter') e.target.blur(); }}
+                    placeholder="Not..."
+                    className="w-full text-center py-4 bg-transparent outline-none focus:bg-slate-50 focus:ring-inset focus:ring-2 focus:ring-slate-300 text-slate-500 text-xs md:text-sm italic transition-all rounded-none"
+                />
+            );
+        });
+
+        class ErrorBoundary extends React.Component {
+            constructor(props) { super(props); this.state = { hasError: false, error: null }; }
+            static getDerivedStateFromError(error) { return { hasError: true, error }; }
+            render() {
+                if (this.state.hasError) {
+                    return (
+                        <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
+                            <Card className="p-8 max-w-lg w-full text-center">
+                                <div className="w-16 h-16 bg-red-100 text-red-500 rounded-full flex items-center justify-center mx-auto mb-4">
+                                    <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                </div>
+                                <h2 className="text-xl font-bold text-slate-800 mb-2">Sistemsel Bir Hata Oluştu</h2>
+                                <p className="text-slate-600 mb-6 text-sm">Beklenmeyen bir sorun meydana geldi. Verileriniz korunuyor.</p>
+                                <Button onClick={() => window.location.reload()} className="w-full">Sayfayı Yenile</Button>
+                            </Card>
+                        </div>
+                    );
+                }
+                return this.props.children;
+            }
+        }
+
+        const Navbar = ({ navigate }) => (
+            <nav className="bg-white border-b border-slate-200 sticky top-0 z-40 shadow-sm">
+                <div className="max-w-5xl mx-auto px-4 h-16 flex items-center justify-between">
+                    <div className="flex items-center gap-2 cursor-pointer transition-transform hover:scale-105" onClick={() => navigate('home')}>
+                        <div className="bg-okey-600 text-white p-2 rounded-lg shadow-md shadow-okey-600/20">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                        </div>
+                        <span className="font-bold text-xl text-slate-800 tracking-tight">Okey Masası</span>
+                    </div>
+                    <div className="flex gap-1 sm:gap-2">
+                        <Button variant="ghost" onClick={() => navigate('home')} className="hidden sm:flex text-sm">Ana Sayfa</Button>
+                        <Button variant="secondary" onClick={() => navigate('history')} className="text-sm shadow-sm">Eski Oyunlarım</Button>
+                    </div>
+                </div>
+            </nav>
+        );
+
+        const HomeView = ({ navigate, games }) => (
+            <div className="max-w-4xl mx-auto px-4 py-12 fade-in">
+                <div className="text-center mb-12">
+                    <h1 className="text-4xl md:text-5xl font-extrabold text-slate-800 mb-4 tracking-tight">Okey Gecenizi Düzenleyin</h1>
+                    <p className="text-lg text-slate-600 max-w-2xl mx-auto leading-relaxed">Masaları rastgele oluşturun, takımları belirleyin, yancıları yönetin ve puanları kolayca takip edin.</p>
+                </div>
+                
+                <div className="grid md:grid-cols-2 gap-6 max-w-3xl mx-auto">
+                    <Card className="p-8 flex flex-col items-center text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border-2 border-transparent hover:border-okey-200">
+                        <div className="w-16 h-16 bg-okey-100 text-okey-600 rounded-full flex items-center justify-center mb-5 shadow-inner">
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-3">Yeni Oyun Kur</h2>
+                        <p className="text-slate-500 mb-8 text-sm leading-relaxed">Oyuncu isimlerini girin, masaları rastgele oluşturun ve hemen oynamaya başlayın.</p>
+                        <Button onClick={() => navigate('setup')} className="w-full mt-auto text-lg py-3 shadow-md shadow-okey-600/20">Hemen Başla</Button>
+                    </Card>
+                    
+                    <Card className="p-8 flex flex-col items-center text-center hover:shadow-lg hover:-translate-y-1 transition-all duration-300 border-2 border-transparent hover:border-slate-200">
+                        <div className="w-16 h-16 bg-slate-100 text-slate-600 rounded-full flex items-center justify-center mb-5 shadow-inner">
+                            <svg className="w-8 h-8" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                        </div>
+                        <h2 className="text-xl font-bold text-slate-800 mb-3">Eski Oyunlarım</h2>
+                        <p className="text-slate-500 mb-8 text-sm leading-relaxed">Önceki oyunların puan durumlarını, kazananlarını ve tüm detaylarını görüntüleyin.</p>
+                        <Button variant="secondary" onClick={() => navigate('history')} className="w-full mt-auto py-3">Geçmişe Göz At</Button>
+                    </Card>
+                </div>
+
+                {games.filter(g => g.status === 'active').length > 0 && (
+                    <div className="max-w-3xl mx-auto mt-16">
+                        <h3 className="font-semibold text-slate-800 mb-4 flex items-center gap-2 text-lg">
+                            <span className="relative flex h-3 w-3">
+                              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-okey-400 opacity-75"></span>
+                              <span className="relative inline-flex rounded-full h-3 w-3 bg-okey-500"></span>
+                            </span>
+                            Devam Eden Oyunlar
+                        </h3>
+                        <div className="grid sm:grid-cols-2 gap-4">
+                            {games.filter(g => g.status === 'active').map(game => (
+                                <Card key={game.id} className="p-5 flex justify-between items-center hover:border-okey-300 transition-colors shadow-sm">
+                                    <div>
+                                        <h4 className="font-bold text-slate-800">{game.title || 'İsimsiz Oyun'}</h4>
+                                        <p className="text-xs text-slate-500 mt-1.5 flex items-center gap-1">
+                                            <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg>
+                                            {new Date(game.date).toLocaleDateString('tr-TR')} • {GAME_TYPES.find(t=>t.id===game.type)?.name}
+                                        </p>
+                                    </div>
+                                    <Button variant="outline" size="sm" className="bg-white" onClick={() => navigate('game', game.id)}>Devam Et</Button>
+                                </Card>
+                            ))}
+                        </div>
+                    </div>
+                )}
+            </div>
+        );
+
+        const SetupView = ({ navigate, createGame }) => {
+            const [players, setPlayers] = useState(['', '', '', '']);
+            const [gameType, setGameType] = useState('normal');
+            const [folding, setFolding] = useState('katlamasiz');
+            const [mode, setMode] = useState('tekli');
+            const [winCondition, setWinCondition] = useState('lowest');
+            const [title, setTitle] = useState('');
+            const [error, setError] = useState('');
+
+            useEffect(() => {
+                if (gameType === '101') setWinCondition('highest');
+                else setWinCondition('lowest');
+            }, [gameType]);
+
+            const MAX_PLAYERS = 20;
+
+            const addPlayer = () => {
+                if (players.length >= MAX_PLAYERS) {
+                    setError(`Maksimum ${MAX_PLAYERS} oyuncu desteklenmektedir.`);
+                    return;
+                }
+                setPlayers([...players, '']);
+                setError('');
+            };
+
+            const removePlayer = (index) => {
+                if (players.length <= 4) return;
+                const newPlayers = [...players];
+                newPlayers.splice(index, 1);
+                setPlayers(newPlayers);
+                setError('');
+            };
+
+            const updatePlayer = (index, value) => {
+                const newPlayers = [...players];
+                newPlayers[index] = value;
+                setPlayers(newPlayers);
+                setError('');
+            };
+
+            const startAssignment = () => {
+                const validPlayers = players.map(p => p.trim()).filter(p => p !== '');
+                
+                if (validPlayers.length < 4) {
+                    setError('Oynamak için en az 4 oyuncu ismi girmelisiniz.');
+                    return;
+                }
+                if (new Set(validPlayers).size !== validPlayers.length) {
+                    setError('Oyuncu isimleri birbirinden farklı olmalıdır. (Aynı ismi iki kez yazmayın)');
+                    return;
+                }
+
+                const shuffled = shuffleArray([...validPlayers]);
+                const newGame = {
+                    id: generateId(),
+                    title: title.trim() || `${new Date().toLocaleDateString('tr-TR')} Okey Gecesi`,
+                    date: new Date().toISOString(),
+                    type: gameType,
+                    folding: folding,
+                    mode: mode,
+                    winCondition: winCondition,
+                    status: 'active',
+                    tables: []
+                };
+
+                const numTables = Math.floor(validPlayers.length / 4);
+                const activePlayersList = shuffled.slice(0, numTables * 4);
+                const substitutesList = shuffled.slice(numTables * 4).map(name => ({ id: generateId(), name }));
+
+                for (let i = 0; i < numTables; i++) {
+                    const tableActive = activePlayersList.slice(i * 4, (i + 1) * 4);
+                    const tableSubs = substitutesList.filter((_, idx) => idx % numTables === i);
+                    
+                    const table = {
+                        id: generateId(),
+                        number: i + 1,
+                        substitutes: tableSubs,
+                        rounds: [],
+                        mode: mode,
+                        photos: []
+                    };
+
+                    if (mode === 'tekli') {
+                        table.players = tableActive.map(name => ({ id: generateId(), name }));
+                    } else {
+                        table.teams = [
+                            { id: generateId(), name: 'Takım A', players: [{ id: generateId(), name: tableActive[0] }, { id: generateId(), name: tableActive[1] }] },
+                            { id: generateId(), name: 'Takım B', players: [{ id: generateId(), name: tableActive[2] }, { id: generateId(), name: tableActive[3] }] }
+                        ];
+                    }
+                    newGame.tables.push(table);
+                }
+
+                createGame(newGame);
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto px-4 py-8 fade-in">
+                    <div className="flex items-center gap-4 mb-8 border-b border-slate-200 pb-4">
+                        <button onClick={() => navigate('home')} className="text-slate-400 hover:text-slate-700 bg-white p-2.5 rounded-full shadow-sm border border-slate-200 transition-colors">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">Yeni Oyun Kur</h1>
+                            <p className="text-sm text-slate-500">Oyuncuları ve oyun kurallarını belirleyin.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid md:grid-cols-5 gap-6">
+                        <div className="md:col-span-3 space-y-6">
+                            <Card className="p-6">
+                                <div className="flex justify-between items-center mb-6">
+                                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2">
+                                        <svg className="w-5 h-5 text-okey-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4.354a4 4 0 110 5.292M15 21H3v-1a6 6 0 0112 0v1zm0 0h6v-1a6 6 0 00-9-5.197M13 7a4 4 0 11-8 0 4 4 0 018 0z"></path></svg>
+                                        Oyuncular
+                                    </h2>
+                                    <span className="text-xs font-bold bg-okey-100 text-okey-700 px-3 py-1 rounded-full">{players.length} Oyuncu</span>
+                                </div>
+                                <div className="space-y-3">
+                                    {players.map((p, i) => (
+                                        <div key={i} className="flex gap-2 relative fade-in">
+                                            <div className="absolute left-3 top-3 text-slate-400 font-bold w-6 text-center text-sm">{i+1}</div>
+                                            <Input 
+                                                className="pl-11" value={p} onChange={e => updatePlayer(i, e.target.value)} placeholder={`Oyuncu ${i+1}`}
+                                            />
+                                            {players.length > 4 && (
+                                                <Button variant="danger" className="px-3 border-transparent" onClick={() => removePlayer(i)} title="Oyuncuyu Sil">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </Button>
+                                            )}
+                                        </div>
+                                    ))}
+                                </div>
+                                <div className="mt-4">
+                                    <Button variant="outline" className="w-full border-dashed border-2 py-3 bg-slate-50/50" onClick={addPlayer} disabled={players.length >= MAX_PLAYERS}>
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 4v16m8-8H4"></path></svg>
+                                        Yeni Oyuncu Ekle {players.length >= MAX_PLAYERS && `(Maks ${MAX_PLAYERS})`}
+                                    </Button>
+                                </div>
+                                
+                                {players.filter(p => p.trim() !== '').length > 4 && (
+                                    <div className="mt-5 bg-blue-50/80 border border-blue-100 text-blue-800 p-4 rounded-xl text-sm flex gap-3 fade-in shadow-sm">
+                                        <svg className="w-5 h-5 shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                        <p><strong>{players.filter(p => p.trim() !== '').length} oyuncu:</strong> Toplam {Math.floor(players.filter(p => p.trim() !== '').length / 4)} masa oluşturulacak ve {players.filter(p => p.trim() !== '').length % 4} kişi yancı olarak atanacak.</p>
+                                    </div>
+                                )}
+                            </Card>
+                        </div>
+
+                        <div className="md:col-span-2 space-y-6">
+                            <Card className="p-6">
+                                <h2 className="text-lg font-bold text-slate-800 mb-5 border-b border-slate-100 pb-3 flex items-center gap-2">
+                                    <svg className="w-5 h-5 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                    Oyun Ayarları
+                                </h2>
+                                
+                                <div className="space-y-5">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Oyun Adı (Opsiyonel)</label>
+                                        <Input value={title} onChange={e => setTitle(e.target.value)} placeholder="Örn: Hafta Sonu Turnuvası" />
+                                    </div>
+                                    
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Oyun Türü</label>
+                                        <div className="flex bg-slate-100 p-1.5 rounded-xl">
+                                            {ACTIVE_GAME_TYPES.map(t => (
+                                                <button key={t.id} onClick={() => setGameType(t.id)} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${gameType === t.id ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                                                    {t.name}
+                                                </button>
+                                            ))}
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Katlama Durumu</label>
+                                        <div className="flex bg-slate-100 p-1.5 rounded-xl">
+                                            <button onClick={() => setFolding('katlamasiz')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${folding === 'katlamasiz' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Katlamasız</button>
+                                            <button onClick={() => setFolding('katlamali')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${folding === 'katlamali' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Katlamalı</button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Oynanış Şekli</label>
+                                        <div className="flex bg-slate-100 p-1.5 rounded-xl">
+                                            <button onClick={() => setMode('tekli')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'tekli' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Tekli (Bireysel)</button>
+                                            <button onClick={() => setMode('takimli')} className={`flex-1 py-2 text-sm font-bold rounded-lg transition-all ${mode === 'takimli' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>Takımlı (Eşli)</button>
+                                        </div>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-sm font-semibold text-slate-700 mb-1.5">Kazanma Kuralı</label>
+                                        <div className="flex flex-col gap-2">
+                                            <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${winCondition === 'lowest' ? 'bg-okey-50 border-okey-200' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
+                                                <input type="radio" checked={winCondition === 'lowest'} onChange={() => setWinCondition('lowest')} className="w-4 h-4 text-okey-600 focus:ring-okey-500" />
+                                                <div>
+                                                    <div className="font-semibold text-sm text-slate-800">En Az Puan Kazandırır</div>
+                                                    <div className="text-xs text-slate-500">Normal Okey ceza sistemi (Eksiye düşme)</div>
+                                                </div>
+                                            </label>
+                                            <label className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${winCondition === 'highest' ? 'bg-okey-50 border-okey-200' : 'bg-white border-slate-200 hover:bg-slate-50'}`}>
+                                                <input type="radio" checked={winCondition === 'highest'} onChange={() => setWinCondition('highest')} className="w-4 h-4 text-okey-600 focus:ring-okey-500" />
+                                                <div>
+                                                    <div className="font-semibold text-sm text-slate-800">En Çok Puan Kazandırır</div>
+                                                    <div className="text-xs text-slate-500">101 Okey veya artı puan sistemi</div>
+                                                </div>
+                                            </label>
+                                        </div>
+                                    </div>
+                                </div>
+                            </Card>
+
+                            {error && (
+                                <div className="p-4 bg-red-50 text-red-700 rounded-xl text-sm border border-red-100 flex items-start gap-3 shadow-sm fade-in">
+                                    <svg className="w-5 h-5 shrink-0 mt-0.5 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"></path></svg>
+                                    <span className="font-medium">{error}</span>
+                                </div>
+                            )}
+
+                            <Button className="w-full py-4 text-lg shadow-md shadow-okey-600/20" onClick={startAssignment}>
+                                <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                                Rastgele Eşleştir & Başla
+                            </Button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        const ActiveGameView = ({ navigate, currentGame, saveGame, showToast }) => {
+            if (!currentGame) return <div className="text-center py-20 text-slate-500">Oyun bulunamadı veya silinmiş.</div>;
+
+            const [selectedTableId, setSelectedTableId] = useState(() => currentGame.tables[0]?.id);
+            const [viewMode, setViewMode] = useState('masa');
+            const [showEndGameModal, setShowEndGameModal] = useState(false);
+            
+            const [substitutingPlayer, setSubstitutingPlayer] = useState(null); 
+            const [substitutingTableId, setSubstitutingTableId] = useState(null);
+            const [swappingPlayerId, setSwappingPlayerId] = useState(null);
+            const [editingTeamId, setEditingTeamId] = useState(null);
+            const [editTeamName, setEditTeamName] = useState("");
+
+            const activeTableId = currentGame.tables.some(t => t.id === selectedTableId) ? selectedTableId : currentGame.tables[0].id;
+            const activeTable = currentGame.tables.find(t => t.id === activeTableId);
+
+            if (!activeTable) return <div>Masa verisi hatalı. Lütfen ana sayfaya dönün.</div>;
+
+            const reshuffleTable = (tableId) => {
+                const table = currentGame.tables.find(t => t.id === tableId);
+                if (table.rounds.length > 0) return;
+                
+                let allPlayers = table.mode === 'tekli' 
+                    ? [...table.players, ...table.substitutes] 
+                    : [...table.teams[0].players, ...table.teams[1].players, ...table.substitutes];
+                
+                const shuffled = shuffleArray(allPlayers);
+                const newTable = JSON.parse(JSON.stringify(table));
+                
+                if (table.mode === 'tekli') {
+                    newTable.players = shuffled.slice(0, 4);
+                    newTable.substitutes = shuffled.slice(4);
+                } else {
+                    newTable.teams[0].players = [shuffled[0], shuffled[1]];
+                    newTable.teams[1].players = [shuffled[2], shuffled[3]];
+                    newTable.substitutes = shuffled.slice(4);
+                }
+
+                saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === tableId ? newTable : t) });
+            };
+
+            const startSubstitution = (sub, tableId) => {
+                setSubstitutingPlayer(sub);
+                setSubstitutingTableId(tableId);
+                setViewMode('masa');
+            };
+
+            const completeSubstitution = (activeTargetId) => {
+                if (!substitutingPlayer || !substitutingTableId) return;
+                const table = currentGame.tables.find(t => t.id === substitutingTableId);
+                const newTable = JSON.parse(JSON.stringify(table));
+                let replacedPlayer = null;
+
+                if (newTable.mode === 'tekli') {
+                    const idx = newTable.players.findIndex(p => p.id === activeTargetId);
+                    if (idx !== -1) {
+                        replacedPlayer = newTable.players[idx];
+                        newTable.players[idx] = substitutingPlayer;
+                    }
+                } else {
+                    for (let team of newTable.teams) {
+                        const idx = team.players.findIndex(p => p.id === activeTargetId);
+                        if (idx !== -1) {
+                            replacedPlayer = team.players[idx];
+                            team.players[idx] = substitutingPlayer;
+                            break;
+                        }
+                    }
+                }
+
+                if (replacedPlayer) {
+                    newTable.substitutes = newTable.substitutes.filter(s => s.id !== substitutingPlayer.id);
+                    newTable.substitutes.push(replacedPlayer);
+                    saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === substitutingTableId ? newTable : t) });
+                }
+
+                setSubstitutingPlayer(null);
+                setSubstitutingTableId(null);
+            };
+
+            const completeSwap = (targetId) => {
+                if (!swappingPlayerId || swappingPlayerId === targetId) return;
+                const newTable = JSON.parse(JSON.stringify(activeTable));
+                
+                if (newTable.mode === 'tekli') {
+                    const sIdx = newTable.players.findIndex(p => p.id === swappingPlayerId);
+                    const tIdx = newTable.players.findIndex(p => p.id === targetId);
+                    if (sIdx !== -1 && tIdx !== -1) {
+                        const temp = newTable.players[sIdx];
+                        newTable.players[sIdx] = newTable.players[tIdx];
+                        newTable.players[tIdx] = temp;
+                    }
+                } else {
+                    let sourceRef = null, targetRef = null;
+                    for (let t of newTable.teams) {
+                        const sIdx = t.players.findIndex(p => p.id === swappingPlayerId);
+                        if (sIdx !== -1) sourceRef = { team: t, idx: sIdx };
+                        const tIdx = t.players.findIndex(p => p.id === targetId);
+                        if (tIdx !== -1) targetRef = { team: t, idx: tIdx };
+                    }
+                    if (sourceRef && targetRef) {
+                        const temp = sourceRef.team.players[sourceRef.idx];
+                        sourceRef.team.players[sourceRef.idx] = targetRef.team.players[targetRef.idx];
+                        targetRef.team.players[targetRef.idx] = temp;
+                    }
+                }
+
+                saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === activeTable.id ? newTable : t) });
+                setSwappingPlayerId(null);
+            };
+
+            const getEntities = (table) => table.mode === 'tekli' ? table.players : table.teams;
+
+            const getScoreTotals = (table) => {
+                const totals = {};
+                table.rounds.forEach(r => {
+                    Object.keys(r.scores).forEach(entityId => {
+                        totals[entityId] = (totals[entityId] || 0) + r.scores[entityId];
+                    });
+                });
+                return totals;
+            };
+
+            const shareResults = async (game, table) => {
+                let text = `🎲 ${game.title}\nTür: ${GAME_TYPES.find(t=>t.id===game.type)?.name}\n\n`;
+                if (table) {
+                    const totals = getScoreTotals(table);
+                    const entities = table.mode === 'tekli' ? table.players : table.teams;
+                    let sorted = [...entities].sort((a,b) => game.winCondition === 'highest' ? totals[b.id] - totals[a.id] : totals[a.id] - totals[b.id]);
+                    text += `🏆 ${table.number}. Masa Lider Tablosu:\n`;
+                    sorted.forEach((e, i) => { text += `${i+1}. ${e.name}: ${totals[e.id] || 0} Puan\n`; });
+                }
+                text += `\nOkey Masası uygulaması ile takip edildi.`;
+                
+                if (navigator.share) {
+                    try { await navigator.share({ title: 'Okey Masası Sonuçları', text }); } catch (err) { console.log(err); }
+                } else {
+                    try {
+                        const textArea = document.createElement("textarea");
+                        textArea.value = text;
+                        document.body.appendChild(textArea);
+                        textArea.select();
+                        document.execCommand("copy");
+                        document.body.removeChild(textArea);
+                        showToast("Sonuçlar panoya kopyalandı!");
+                    } catch (e) { console.error(e); }
+                }
+            };
+
+            const handlePhotoUpload = (e, tableId) => {
+                const file = e.target.files[0];
+                if (!file) return;
+                showToast("Fotoğraf ekleniyor, lütfen bekleyin...");
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const img = new Image();
+                    img.onload = () => {
+                        const canvas = document.createElement('canvas');
+                        let width = img.width, height = img.height;
+                        if (width > 800) { height = Math.round((height * 800) / width); width = 800; }
+                        canvas.width = width; canvas.height = height;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(img, 0, 0, width, height);
+                        const base64 = canvas.toDataURL('image/jpeg', 0.6);
+                        
+                        const table = currentGame.tables.find(t => t.id === tableId);
+                        const newTable = { ...table, photos: [...(table.photos || []), base64] };
+                        saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === table.id ? newTable : t) });
+                        showToast("Fotoğraf başarıyla eklendi!");
+                    }
+                    img.src = event.target.result;
+                };
+                reader.readAsDataURL(file);
+            };
+
+            const deletePhoto = (tableId, photoIndex) => {
+                const table = currentGame.tables.find(t => t.id === tableId);
+                const newPhotos = [...(table.photos || [])];
+                newPhotos.splice(photoIndex, 1);
+                saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === table.id ? { ...table, photos: newPhotos } : t) });
+                showToast("Fotoğraf silindi.");
+            };
+
+            const saveTeamName = (tableId, teamId) => {
+                if (!editTeamName.trim()) { setEditingTeamId(null); return; }
+                const table = currentGame.tables.find(t => t.id === tableId);
+                const newTable = JSON.parse(JSON.stringify(table));
+                const team = newTable.teams.find(t => t.id === teamId);
+                if (team) {
+                    team.name = editTeamName.trim();
+                    saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === tableId ? newTable : t) });
+                }
+                setEditingTeamId(null);
+            };
+
+            const renderYazboz = () => {
+                const currentEntities = getEntities(activeTable);
+                const allHistoricalIds = new Set();
+                activeTable.rounds.forEach(r => Object.keys(r.scores).forEach(id => allHistoricalIds.add(id)));
+                currentEntities.forEach(e => allHistoricalIds.add(e.id));
+                
+                const getName = (id) => {
+                    let e = currentEntities.find(x => x.id === id);
+                    if (e) return e.name;
+                    let s = activeTable.substitutes?.find(x => x.id === id);
+                    if (s) return s.name;
+                    return "Bilinmeyen";
+                };
+
+                const columns = Array.from(allHistoricalIds).map(id => ({ id, name: getName(id) }));
+                const MAX_ROUNDS = 7;
+                const displayRowCount = Math.max(MAX_ROUNDS, activeTable.rounds.length + 1);
+                const displayRounds = [];
+                for (let i = 0; i < displayRowCount; i++) {
+                    displayRounds.push(activeTable.rounds[i] || { id: `virtual-${i}`, scores: {}, note: '' });
+                }
+                
+                const totals = getScoreTotals(activeTable);
+
+                const updateRounds = (updaterFn) => {
+                    const newRounds = activeTable.rounds.map(r => ({ ...r, scores: { ...r.scores } }));
+                    updaterFn(newRounds);
+                    
+                    // Cleanup trailing empty rows
+                    while (newRounds.length > 0) {
+                        const last = newRounds[newRounds.length - 1];
+                        if (Object.keys(last.scores).length === 0 && !last.note) newRounds.pop();
+                        else break;
+                    }
+                    
+                    saveGame({ ...currentGame, tables: currentGame.tables.map(t => t.id === activeTable.id ? { ...activeTable, rounds: newRounds } : t) });
+                };
+
+                const handleScoreChange = (roundIndex, entityId, val) => {
+                    updateRounds(newRounds => {
+                        while (newRounds.length <= roundIndex) newRounds.push({ id: generateId(), scores: {}, note: '' });
+                        if (val === '') delete newRounds[roundIndex].scores[entityId];
+                        else newRounds[roundIndex].scores[entityId] = val;
+                    });
+                };
+
+                const handleNoteChange = (roundIndex, val) => {
+                    updateRounds(newRounds => {
+                        while (newRounds.length <= roundIndex) newRounds.push({ id: generateId(), scores: {}, note: '' });
+                        newRounds[roundIndex].note = val;
+                    });
+                };
+
+                const clearRound = (roundIndex) => {
+                    updateRounds(newRounds => {
+                        if (newRounds[roundIndex]) newRounds[roundIndex] = { id: generateId(), scores: {}, note: '' };
+                    });
+                };
+
+                return (
+                    <div className="space-y-6">
+                        <Card className="overflow-hidden bg-white shadow-md border-0 ring-1 ring-slate-200 fade-in">
+                            <div className="bg-slate-800 text-white p-5 flex flex-col sm:flex-row gap-4 justify-between sm:items-center">
+                                <div>
+                                    <h3 className="font-bold text-lg flex items-center gap-2">
+                                        <svg className="w-6 h-6 text-okey-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"></path></svg>
+                                        Yazboz Tablosu
+                                    </h3>
+                                    <p className="text-xs text-slate-400 mt-1">Gelen puanları doğrudan hücrelere yazın.</p>
+                                </div>
+                                <div className="flex gap-2">
+                                    <label className="cursor-pointer bg-slate-700 hover:bg-slate-600 transition-colors px-3 py-1.5 rounded-lg text-slate-200 text-sm font-bold flex items-center gap-2 border border-slate-600">
+                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 9a2 2 0 012-2h.93a2 2 0 001.664-.89l.812-1.22A2 2 0 0110.07 4h3.86a2 2 0 011.664.89l.812 1.22A2 2 0 0018.07 7H19a2 2 0 012 2v9a2 2 0 01-2 2H5a2 2 0 01-2-2V9z"></path><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15 13a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                                        Fotoğraf Ekle
+                                        <input type="file" accept="image/*" capture="environment" className="hidden" onChange={(e) => handlePhotoUpload(e, activeTable.id)} />
+                                    </label>
+                                    <span className="text-sm font-bold bg-slate-700 px-3 py-1.5 rounded-lg text-slate-200 border border-slate-600">El: {activeTable.rounds.length}</span>
+                                </div>
+                            </div>
+                            <div className="overflow-x-auto">
+                                <table className="w-full min-w-[500px]">
+                                    <thead>
+                                        <tr>
+                                            <th className="px-3 py-3 border-b border-r border-slate-200 bg-slate-100 text-slate-500 font-bold w-12 text-center">El</th>
+                                            {columns.map(c => <th key={c.id} className="px-3 py-3 border-b border-r border-slate-200 bg-slate-100 text-slate-800 font-bold text-center">{c.name}</th>)}
+                                            <th className="px-3 py-3 border-b border-r border-slate-200 bg-slate-100 text-slate-500 font-bold text-center">Not</th>
+                                            <th className="px-3 py-3 border-b border-slate-200 bg-slate-100 w-10"></th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="divide-y divide-slate-100">
+                                    {displayRounds.map((r, i) => (
+                                        <tr key={r.id} className="group hover:bg-slate-50 transition-colors">
+                                            <td className="px-3 py-2 border-r border-slate-200 font-bold text-slate-400 bg-slate-50 text-center">{i + 1}</td>
+                                            {columns.map(c => (
+                                                <td key={c.id} className="p-0 border-r border-slate-200 relative">
+                                                    <YazbozInput value={r.scores[c.id]} onChange={(val) => handleScoreChange(i, c.id, val)} />
+                                                </td>
+                                            ))}
+                                            <td className="p-0 border-r border-slate-100">
+                                                <YazbozNoteInput value={r.note} onChange={(val) => handleNoteChange(i, val)} />
+                                            </td>
+                                            <td className="p-0 align-middle">
+                                                <button onClick={() => clearRound(i)} className="text-slate-300 hover:text-red-500 p-2 opacity-0 group-hover:opacity-100 transition-all rounded-full hover:bg-red-50" title="Satırı Temizle">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                                <tfoot className="bg-slate-100 border-t-4 border-okey-500 text-slate-800">
+                                    <tr>
+                                        <td className="px-3 py-5 font-black border-r border-slate-200 text-sm">TOPLAM</td>
+                                        {columns.map(c => (
+                                            <td key={c.id} className={`px-3 py-5 font-black text-2xl border-r border-slate-200 text-center ${totals[c.id] > 0 ? 'text-okey-600' : totals[c.id] < 0 ? 'text-red-600' : ''}`}>
+                                                {totals[c.id] || 0}
+                                            </td>
+                                        ))}
+                                        <td className="px-3 py-5" colSpan="2"></td>
+                                    </tr>
+                                </tfoot>
+                            </table>
+                        </div>
+                        
+                        {activeTable.photos?.length > 0 && (
+                            <div className="p-4 bg-slate-50 border-t border-slate-200">
+                                <h4 className="font-semibold text-slate-700 mb-3 text-sm">Yazboz Fotoğrafları</h4>
+                                <div className="flex flex-wrap gap-4">
+                                    {activeTable.photos.map((photoBase64, idx) => (
+                                        <div key={idx} className="relative group w-32 h-32 md:w-48 md:h-48 rounded-xl overflow-hidden shadow-sm border border-slate-200">
+                                            <img src={photoBase64} alt={`Yazboz ${idx+1}`} className="w-full h-full object-cover" />
+                                            <div className="absolute inset-0 bg-slate-900/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-sm">
+                                                <a href={photoBase64} download={`yazboz-${activeTable.number}-${idx+1}.jpg`} className="p-2 bg-white text-slate-800 rounded-full mx-1 hover:bg-slate-100" title="İndir">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"></path></svg>
+                                                </a>
+                                                <button onClick={() => deletePhoto(activeTable.id, idx)} className="p-2 bg-red-500 text-white rounded-full mx-1 hover:bg-red-600" title="Sil">
+                                                    <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        )}
+                    </Card>
+                </div>
+                );
+            };
+
+            const renderTableEntities = (table) => {
+                const isSubbing = substitutingTableId === table.id;
+                const isSwapping = swappingPlayerId !== null;
+                const entities = getEntities(table);
+
+                return (
+                    <div className={`grid gap-5 ${table.mode === 'tekli' ? 'sm:grid-cols-2' : 'grid-cols-1 md:grid-cols-2'}`}>
+                        {entities.map((entity, i) => (
+                            <div key={entity.id} className={`p-5 rounded-xl border-2 transition-all ${isSubbing ? 'border-dashed border-okey-400 bg-okey-50 shadow-inner' : 'border-slate-100 bg-white shadow-sm'}`}>
+                                {table.mode === 'tekli' ? (
+                                    <div className="flex justify-between items-center">
+                                        <div className="flex items-center gap-4">
+                                            <div className="w-12 h-12 rounded-full bg-slate-100 flex items-center justify-center text-slate-500 font-black text-lg border border-slate-200">{i+1}</div>
+                                            <span className="font-bold text-slate-800 text-lg">{entity.name}</span>
+                                        </div>
+                                        <div className="flex gap-2">
+                                            {isSubbing && <Button size="sm" onClick={() => completeSubstitution(entity.id)} className="animate-pulse">Seç ve Değiş</Button>}
+                                            {!isSubbing && !isSwapping && (
+                                                <Button variant="ghost" size="sm" onClick={() => setSwappingPlayerId(entity.id)} className="text-xs px-2 text-slate-400 hover:text-okey-600" title="Başka bir oyuncuyla yer değiştir">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                                                </Button>
+                                            )}
+                                            {isSwapping && swappingPlayerId === entity.id && <Button variant="danger" size="sm" onClick={() => setSwappingPlayerId(null)} className="text-xs px-3">İptal</Button>}
+                                            {isSwapping && swappingPlayerId !== entity.id && <Button variant="outline" size="sm" onClick={() => completeSwap(entity.id)} className="text-xs px-3 animate-pulse border-okey-400 text-okey-600 bg-okey-50">Bununla Değiş</Button>}
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <div>
+                                        <div className="font-black text-slate-800 text-lg mb-4 border-b border-slate-100 pb-3 flex items-center gap-2">
+                                            <span className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center text-sm shrink-0">{i+1}</span>
+                                            {editingTeamId === entity.id ? (
+                                                <div className="flex items-center gap-2 w-full">
+                                                    <Input value={editTeamName} onChange={(e) => setEditTeamName(e.target.value)} className="py-1 px-2 text-sm" placeholder="Takım adı..." onKeyDown={(e) => { if (e.key === 'Enter') saveTeamName(table.id, entity.id); }} autoFocus />
+                                                    <Button size="sm" onClick={() => saveTeamName(table.id, entity.id)} className="px-2 py-1 bg-okey-100 text-okey-700 hover:bg-okey-200">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                                                    </Button>
+                                                </div>
+                                            ) : (
+                                                <div className="flex items-center gap-2 w-full group">
+                                                    <span>{entity.name}</span>
+                                                    <button onClick={() => { setEditingTeamId(entity.id); setEditTeamName(entity.name); }} className="opacity-0 group-hover:opacity-100 text-slate-400 hover:text-okey-600 transition-all p-1" title="İsmi Düzenle">
+                                                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"></path></svg>
+                                                    </button>
+                                                </div>
+                                            )}
+                                        </div>
+                                        <div className="space-y-3">
+                                            {entity.players.map(p => (
+                                                <div key={p.id} className={`flex justify-between items-center p-3 rounded-xl border transition-colors ${swappingPlayerId === p.id ? 'bg-yellow-50 border-yellow-300' : 'bg-slate-50 border-slate-100'}`}>
+                                                    <span className="font-medium text-slate-700 flex items-center gap-2">
+                                                        <svg className="w-4 h-4 text-slate-400" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                                                        {p.name}
+                                                    </span>
+                                                    <div className="flex gap-2">
+                                                        {isSubbing && <Button variant="outline" size="sm" className="text-xs py-1.5 px-3" onClick={() => completeSubstitution(p.id)}>Yerine Geç</Button>}
+                                                        {!isSubbing && !isSwapping && (
+                                                            <Button variant="ghost" size="sm" onClick={() => setSwappingPlayerId(p.id)} className="text-xs px-2 text-slate-400 hover:text-okey-600" title="Başka bir oyuncuyla yer değiştir">
+                                                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg>
+                                                            </Button>
+                                                        )}
+                                                        {isSwapping && swappingPlayerId === p.id && <Button variant="danger" size="sm" onClick={() => setSwappingPlayerId(null)} className="text-xs py-1.5 px-3">İptal</Button>}
+                                                        {isSwapping && swappingPlayerId !== p.id && <Button variant="outline" size="sm" onClick={() => completeSwap(p.id)} className="text-xs py-1.5 px-3 animate-pulse border-okey-400 text-okey-600 bg-okey-50">Bununla Değiş</Button>}
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="max-w-5xl mx-auto px-4 py-8 pb-24 fade-in">
+                    <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-8 gap-4 border-b border-slate-200 pb-6">
+                        <div>
+                            <h1 className="text-3xl font-extrabold text-slate-800 tracking-tight">{currentGame.title}</h1>
+                            <div className="flex flex-wrap gap-2 mt-2">
+                                <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-semibold">{GAME_TYPES.find(t=>t.id===currentGame.type)?.name} {currentGame.folding ? `(${currentGame.folding === 'katlamali' ? 'Katlamalı' : 'Katlamasız'})` : ''}</span>
+                                <span className="bg-slate-100 text-slate-600 px-2.5 py-1 rounded-md text-xs font-semibold">{currentGame.mode === 'tekli' ? 'Bireysel Oyun' : 'Eşli Oyun'}</span>
+                                <span className="bg-okey-50 text-okey-700 px-2.5 py-1 rounded-md text-xs font-semibold border border-okey-200">
+                                    {currentGame.winCondition === 'highest' ? 'En Çok Puan Kazanan Kazanır' : 'En Az Puan Kazanan Kazanır (Ceza)'}
+                                </span>
+                            </div>
+                        </div>
+                        <div className="flex gap-2 w-full md:w-auto">
+                            <Button variant="outline" size="md" onClick={() => shareResults(currentGame, activeTable)} className="bg-white shadow-sm flex-1 md:flex-none">
+                                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z"></path></svg>
+                                Paylaş
+                            </Button>
+                            <Button variant="danger" size="md" onClick={() => setShowEndGameModal(true)} className="shadow-sm flex-1 md:flex-none">Oyunu Bitir</Button>
+                        </div>
+                    </div>
+
+                    {currentGame.tables.length > 1 && (
+                        <div className="flex flex-wrap gap-2 mb-6 bg-slate-100 p-1.5 rounded-xl w-full md:w-fit shadow-inner">
+                            {currentGame.tables.map(t => (
+                                <button key={t.id} onClick={() => setSelectedTableId(t.id)} className={`flex-1 min-w-[100px] md:w-40 py-2.5 text-sm font-bold rounded-lg transition-all ${activeTableId === t.id ? 'bg-white shadow text-okey-700' : 'text-slate-500 hover:text-slate-800'}`}>
+                                    {t.number}. Masa
+                                </button>
+                            ))}
+                        </div>
+                    )}
+
+                    <div className="bg-white rounded-2xl shadow-sm border border-slate-200 mb-6 overflow-hidden">
+                        <div className="flex border-b border-slate-100 bg-slate-50/50">
+                            <button onClick={() => setViewMode('masa')} className={`flex-1 py-4 text-center font-bold text-base transition-colors ${viewMode === 'masa' ? 'border-b-2 border-okey-500 text-okey-700 bg-white' : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'}`}>Masa Düzeni & Yancılar</button>
+                            <button onClick={() => setViewMode('skor')} className={`flex-1 py-4 text-center font-bold text-base transition-colors ${viewMode === 'skor' ? 'border-b-2 border-okey-500 text-okey-700 bg-white' : 'border-b-2 border-transparent text-slate-500 hover:text-slate-700'}`}>Skor Takibi</button>
+                        </div>
+
+                        <div className="p-4 sm:p-6">
+                            {viewMode === 'masa' && (
+                                <div className="space-y-10 fade-in">
+                                    <div>
+                                        <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center mb-6 gap-4">
+                                            <h2 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                                                <span className="flex h-3 w-3 relative"><span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-okey-400 opacity-75"></span><span className="relative inline-flex rounded-full h-3 w-3 bg-okey-500"></span></span>
+                                                Aktif Masada Oturanlar
+                                            </h2>
+                                            {activeTable.rounds.length === 0 && (
+                                                <Button variant="outline" size="sm" onClick={() => reshuffleTable(activeTable.id)} className="bg-white">
+                                                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"></path></svg>
+                                                    Yerleri Karıştır
+                                                </Button>
+                                            )}
+                                        </div>
+                                        
+                                        {substitutingTableId === activeTable.id && (
+                                            <div className="bg-blue-50 text-blue-800 p-5 rounded-xl mb-6 border border-blue-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm fade-in">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-blue-200 p-2 rounded-full"><svg className="w-5 h-5 text-blue-600" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg></div>
+                                                    <span><strong>{substitutingPlayer.name}</strong> oyuna girmek istiyor. Lütfen yer değiştireceği aktif oyuncuyu seçin.</span>
+                                                </div>
+                                                <Button variant="ghost" className="bg-white border border-blue-200 text-blue-700 w-full sm:w-auto" onClick={() => {setSubstitutingPlayer(null); setSubstitutingTableId(null)}}>İptal Et</Button>
+                                            </div>
+                                        )}
+
+                                        {swappingPlayerId && (
+                                            <div className="bg-yellow-50 text-yellow-800 p-5 rounded-xl mb-6 border border-yellow-200 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm fade-in">
+                                                <div className="flex items-center gap-3">
+                                                    <div className="bg-yellow-200 p-2 rounded-full"><svg className="w-5 h-5 text-yellow-700" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"></path></svg></div>
+                                                    <span>Oyuncu yer değiştirme modundasınız. Hedef oyuncuyu seçin.</span>
+                                                </div>
+                                                <Button variant="ghost" className="bg-white border border-yellow-200 text-yellow-700 w-full sm:w-auto" onClick={() => setSwappingPlayerId(null)}>İptal Et</Button>
+                                            </div>
+                                        )}
+
+                                        {renderTableEntities(activeTable)}
+                                    </div>
+
+                                    {activeTable.substitutes.length > 0 && (
+                                        <div className="pt-8 border-t border-slate-100">
+                                            <h2 className="text-lg font-bold text-slate-800 mb-5 flex items-center gap-2">
+                                                <svg className="w-5 h-5 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 20h5v-2a3 3 0 00-5.356-1.857M17 20H7m10 0v-2c0-.656-.126-1.283-.356-1.857M7 20H2v-2a3 3 0 015.356-1.857M7 20v-2c0-.656.126-1.283.356-1.857m0 0a5.002 5.002 0 019.288 0M15 7a3 3 0 11-6 0 3 3 0 016 0zm6 3a2 2 0 11-4 0 2 2 0 014 0zM7 10a2 2 0 11-4 0 2 2 0 014 0z"></path></svg>
+                                                Yancılar (Yedek Oyuncular)
+                                            </h2>
+                                            <div className="flex flex-wrap gap-4">
+                                                {activeTable.substitutes.map(sub => (
+                                                    <div key={sub.id} className="bg-slate-50 border border-slate-200 rounded-xl p-4 flex items-center gap-4 shadow-sm">
+                                                        <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
+                                                            <svg className="w-4 h-4 text-slate-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z" clipRule="evenodd"></path></svg>
+                                                        </div>
+                                                        <span className="font-bold text-slate-700">{sub.name}</span>
+                                                        <Button variant="outline" size="sm" className="bg-white ml-2" onClick={() => startSubstitution(sub, activeTable.id)} disabled={substitutingTableId !== null || swappingPlayerId !== null}>Oyuna Gir</Button>
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )}
+                                </div>
+                            )}
+
+                            {viewMode === 'skor' && <div className="fade-in">{renderYazboz()}</div>}
+                        </div>
+                    </div>
+                    
+                    <ConfirmModal 
+                        isOpen={showEndGameModal} onClose={() => setShowEndGameModal(false)}
+                        onConfirm={() => { saveGame({...currentGame, status: 'finished'}); navigate('results', currentGame.id); }}
+                        title="Oyunu Bitir" message="Oyunu bitirmek istediğinize emin misiniz? Bu işlemden sonra yeni puan eklenemez, sonuç ekranına yönlendirileceksiniz." variant="primary" confirmText="Oyunu Bitir"
+                    />
+                </div>
+            );
+        };
+
+        const ResultsView = ({ navigate, currentGame }) => {
+            if (!currentGame) return null;
+
+            const renderTableResult = (table) => {
+                const totals = {};
+                table.rounds.forEach(r => Object.keys(r.scores).forEach(entityId => { totals[entityId] = (totals[entityId] || 0) + r.scores[entityId]; }));
+                
+                const allHistoricalIds = new Set();
+                table.rounds.forEach(r => Object.keys(r.scores).forEach(id => allHistoricalIds.add(id)));
+                
+                const getEntity = (id) => {
+                    let entities = table.mode === 'tekli' ? table.players : table.teams;
+                    let e = entities.find(x => x.id === id);
+                    if (e) return e;
+                    let s = table.substitutes?.find(x => x.id === id);
+                    if (s) return s;
+                    return { id, name: "Bilinmeyen" };
+                };
+
+                const results = Array.from(allHistoricalIds).map(id => ({ entity: getEntity(id), score: totals[id] || 0 }));
+                results.sort((a, b) => currentGame.winCondition === 'highest' ? b.score - a.score : a.score - b.score);
+                
+                if (results.length === 0) return <div className="text-slate-500 text-center p-8 border rounded-xl border-dashed">Bu masada oyun oynanmadı.</div>;
+
+                const winnerScore = results[0].score;
+                const winners = results.filter(r => r.score === winnerScore);
+                const isTie = winners.length > 1;
+
+                return (
+                    <Card className="p-8 mt-6 border-0 shadow-md ring-1 ring-slate-200">
+                        <h3 className="text-xl font-bold text-center text-slate-800 mb-8 border-b border-slate-100 pb-4">
+                            {currentGame.tables.length > 1 ? `${table.number}. Masa Sonuçları` : 'Oyun Sonucu'}
+                        </h3>
+
+                        <div className="text-center mb-10">
+                            <div className="w-24 h-24 bg-yellow-100 rounded-full flex items-center justify-center mx-auto mb-5 shadow-inner border-4 border-yellow-50">
+                                <svg className="w-12 h-12 text-yellow-500" fill="currentColor" viewBox="0 0 20 20"><path fillRule="evenodd" d="M10 2a.75.75 0 01.75.75v1.282l2.22 1.48a.75.75 0 01-.832 1.248L10 5.286l-2.138 1.474a.75.75 0 01-.832-1.248l2.22-1.48V2.75A.75.75 0 0110 2zm4.125 5.86a.75.75 0 011.002.404l1.455 3.639a.75.75 0 01-1.393.557l-.316-.79h-9.746l-.316.79a.75.75 0 01-1.393-.557l1.455-3.639a.75.75 0 011.002-.404h8.25zM7.5 13h5a.75.75 0 01.75.75v3.5a.75.75 0 01-.75.75h-5a.75.75 0 01-.75-.75v-3.5a.75.75 0 01.75-.75z" clipRule="evenodd"></path></svg>
+                            </div>
+                            {isTie ? (
+                                <>
+                                    <h2 className="text-3xl font-black text-slate-800 mb-2">Beraberlik!</h2>
+                                    <p className="text-lg text-slate-600 font-medium">{winners.map(w => w.entity.name).join(' ve ')} kazandı.</p>
+                                </>
+                            ) : (
+                                <>
+                                    <h2 className="text-3xl font-black text-okey-600 mb-2">Kazanan: {winners[0].entity.name}</h2>
+                                    <p className="text-lg text-slate-600 font-medium">Toplam <strong className="text-slate-800">{winners[0].score}</strong> puanla zafer elde etti.</p>
+                                </>
+                            )}
+                        </div>
+
+                        <div className="space-y-4 max-w-lg mx-auto">
+                            {results.map((r, i) => (
+                                <div key={r.entity.id} className={`flex justify-between items-center p-5 rounded-2xl border-2 transition-all ${i === 0 ? 'bg-yellow-50 border-yellow-200 scale-105 shadow-sm my-6' : 'bg-white border-slate-100 shadow-sm'}`}>
+                                    <div className="flex items-center gap-4">
+                                        <span className={`w-10 h-10 rounded-full flex items-center justify-center font-black text-lg ${i===0?'bg-yellow-400 text-yellow-900 shadow-inner':'bg-slate-100 text-slate-500'}`}>{i+1}</span>
+                                        <span className={`font-bold ${i===0?'text-yellow-900 text-lg':'text-slate-700'}`}>{r.entity.name}</span>
+                                    </div>
+                                    <span className={`font-black text-xl ${i===0?'text-yellow-900':'text-slate-700'}`}>{r.score}</span>
+                                </div>
+                            ))}
+                        </div>
+                    </Card>
+                );
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto px-4 py-12 fade-in">
+                    <div className="text-center mb-10">
+                        <span className="bg-slate-100 text-slate-600 px-3 py-1.5 rounded-full text-sm font-bold tracking-wide uppercase mb-4 inline-block">Oyun Bitti</span>
+                        <h1 className="text-4xl font-black text-slate-800 mb-2">{currentGame.title}</h1>
+                        <p className="text-slate-500 font-medium">{new Date(currentGame.date).toLocaleDateString('tr-TR', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })} • {currentGame.tables.reduce((acc, t) => acc + t.rounds.length, 0)} El Oynandı</p>
+                    </div>
+                    {currentGame.tables.map(table => <div key={table.id}>{renderTableResult(table)}</div>)}
+                    <div className="flex flex-col sm:flex-row gap-4 mt-10 justify-center border-t border-slate-200 pt-10">
+                        <Button onClick={() => navigate('setup')} size="lg" className="w-full sm:w-auto">Yeniden Rövanş Başlat</Button>
+                        <Button variant="secondary" onClick={() => navigate('history')} size="lg" className="w-full sm:w-auto border border-slate-200">Tüm Geçmişe Dön</Button>
+                    </div>
+                </div>
+            );
+        };
+
+        const HistoryView = ({ navigate, games, setGames }) => {
+            const [showDelete, setShowDelete] = useState(false);
+            const [gameToDelete, setGameToDelete] = useState(null);
+
+            const deleteGame = () => {
+                if (gameToDelete) {
+                    setGames(games.filter(g => g.id !== gameToDelete));
+                    setGameToDelete(null);
+                }
+            };
+
+            return (
+                <div className="max-w-4xl mx-auto px-4 py-8 fade-in">
+                    <div className="flex items-center gap-4 mb-8 border-b border-slate-200 pb-4">
+                        <button onClick={() => navigate('home')} className="text-slate-400 hover:text-slate-700 bg-white p-2.5 rounded-full shadow-sm border border-slate-200 transition-colors">
+                            <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path></svg>
+                        </button>
+                        <div>
+                            <h1 className="text-2xl font-bold text-slate-800">Eski Oyunlarım</h1>
+                            <p className="text-sm text-slate-500">Önceki oyun kayıtlarınız tarayıcınızda saklanmaktadır.</p>
+                        </div>
+                    </div>
+
+                    {games.length === 0 ? (
+                        <div className="text-center py-20 bg-white rounded-2xl border-2 border-dashed border-slate-200">
+                            <div className="text-slate-300 mb-4 flex justify-center">
+                                <svg className="w-20 h-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="1.5" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            </div>
+                            <h3 className="text-xl font-bold text-slate-700 mb-2">Henüz kaydedilmiş oyun yok</h3>
+                            <p className="text-slate-500 mb-8">Yeni bir oyun kurarak ilk kaydınızı oluşturun.</p>
+                            <Button onClick={() => navigate('setup')} className="mx-auto" size="lg">Hemen Oyun Kur</Button>
+                        </div>
+                    ) : (
+                        <div className="grid md:grid-cols-2 gap-5">
+                            {games.map(game => (
+                                <Card key={game.id} className="cursor-pointer hover:shadow-lg transition-all hover:-translate-y-1 hover:border-okey-300 group relative border-2 border-transparent bg-white ring-1 ring-slate-200" onClick={() => navigate(game.status === 'finished' ? 'results' : 'game', game.id)}>
+                                    <div className="p-6">
+                                        <div className="flex justify-between items-start mb-3">
+                                            <h3 className="font-bold text-lg text-slate-800 truncate pr-10">{game.title}</h3>
+                                            <span className={`text-xs px-2.5 py-1 rounded-full font-bold shadow-sm ${game.status === 'active' ? 'bg-okey-100 text-okey-700 border border-okey-200' : 'bg-slate-100 text-slate-600 border border-slate-200'}`}>
+                                                {game.status === 'active' ? 'Devam Ediyor' : 'Bitti'}
+                                            </span>
+                                        </div>
+                                        <div className="text-sm text-slate-500 mb-6 flex flex-col gap-1.5">
+                                            <span className="flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"></path></svg> {new Date(game.date).toLocaleDateString('tr-TR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                                            <span className="flex items-center gap-2"><svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 002-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg> {GAME_TYPES.find(t=>t.id===game.type)?.name} {game.folding ? `(${game.folding === 'katlamali' ? 'Katlamalı' : 'Katlamasız'})` : ''} • {game.mode === 'tekli' ? 'Bireysel' : 'Eşli'}</span>
+                                        </div>
+                                        
+                                        <div className="flex justify-between items-center text-sm pt-4 border-t border-slate-100">
+                                            <span className="font-medium text-slate-600">{game.tables.length} Masa • {game.tables.reduce((acc, t) => acc + (t.mode === 'tekli' ? t.players.length : 4) + t.substitutes.length, 0)} Oyuncu</span>
+                                            <span className="text-okey-600 font-bold group-hover:translate-x-1 transition-transform">{game.status === 'finished' ? 'Sonuçları Gör' : 'Oyuna Dön'} &rarr;</span>
+                                        </div>
+                                    </div>
+                                    <button onClick={(e) => { e.stopPropagation(); setGameToDelete(game.id); setShowDelete(true); }} className="absolute top-5 right-5 text-slate-300 hover:text-red-500 opacity-0 group-hover:opacity-100 transition-opacity p-1.5 bg-white rounded-full shadow-sm border border-slate-100 hover:border-red-200" title="Oyunu Sil">
+                                        <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"></path></svg>
+                                    </button>
+                                </Card>
+                            ))}
+                        </div>
+                    )}
+
+                    <ConfirmModal 
+                        isOpen={showDelete} onClose={() => setShowDelete(false)} onConfirm={deleteGame}
+                        title="Oyunu Sil" message="Bu oyunu geçmişten silmek istediğinize emin misiniz? Bu işlem geri alınamaz ve tüm puan kayıtları yok olur." variant="danger" confirmText="Kalıcı Olarak Sil"
+                    />
+                </div>
+            );
+        };
+
+        const App = () => {
+            const [view, setView] = useState('home');
+            const [toast, setToast] = useState(null);
+            
+            const [games, setGames] = useState(() => {
+                try {
+                    const saved = localStorage.getItem('okey_games');
+                    return saved ? JSON.parse(saved) : [];
+                } catch (e) { return []; }
+            });
+            const [currentGameId, setCurrentGameId] = useState(null);
+
+            useEffect(() => {
+                try { localStorage.setItem('okey_games', JSON.stringify(games)); } catch (e) { console.error(e); }
+            }, [games]);
+
+            const currentGame = useMemo(() => games.find(g => g.id === currentGameId), [games, currentGameId]);
+
+            const saveGame = (updatedGame) => {
+                setGames(prev => prev.map(g => g.id === updatedGame.id ? updatedGame : g));
+            };
+
+            const navigate = (newView, gameId = null) => {
+                if (gameId) setCurrentGameId(gameId);
+                setView(newView);
+                window.scrollTo(0, 0);
+            };
+
+            const showToast = (message) => {
+                setToast(message);
+                setTimeout(() => setToast(null), 3000);
+            };
+
+            return (
+                <div className="min-h-screen flex flex-col relative">
+                    <Navbar navigate={navigate} />
+                    <main className="flex-1">
+                        {view === 'home' && <HomeView navigate={navigate} games={games} />}
+                        {view === 'setup' && <SetupView navigate={navigate} createGame={(g) => { setGames([g, ...games]); navigate('game', g.id); }} />}
+                        {view === 'game' && <ActiveGameView navigate={navigate} currentGame={currentGame} saveGame={saveGame} showToast={showToast} />}
+                        {view === 'results' && <ResultsView navigate={navigate} currentGame={currentGame} />}
+                        {view === 'history' && <HistoryView navigate={navigate} games={games} setGames={setGames} />}
+                    </main>
+                    {toast && (
+                        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-2xl z-50 fade-in flex items-center gap-2 text-sm font-medium border border-slate-700 whitespace-nowrap">
+                            <svg className="w-5 h-5 text-okey-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"></path></svg>
+                            {toast}
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(
+            <ErrorBoundary>
+                <App />
+            </ErrorBoundary>
+        );
+    </script>
+</body>
+</html>
