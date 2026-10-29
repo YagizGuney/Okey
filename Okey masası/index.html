@@ -107,7 +107,8 @@
         const generateAIContent = async (prompt, systemInstruction = "", retries = 3) => {
             // === GITHUB İÇİN GÜVENLİ YAPAY ZEKA ALANI ===
             // Yapay zeka özelliklerini açmak için Google AI Studio'dan (aistudio.google.com) 
-            // ücretsiz bir API anahtarı alıp buraya tırnakların içine yazabilirsiniz.
+            // Gizli API anahtarlarını herkese açık HTML/JavaScript içine yazmayın.
+            // AI özelliği için anahtarı sunucuda tutan bir backend/proxy kullanın.
             const apiKey = ""; 
             
             if (!apiKey) {
